@@ -74,10 +74,10 @@ class Agent:
         # Exploration Decision
         if np.random.rand() < epsilon:
             exploration = True
-            action = np.random.randint(self.NUM_ACTIONS)
+            action = np.random.randint(self.NUM_ACTIONS)  # random action
         else:
             exploration = False
-            probs = policy_network.predict(sample)
+            probs = policy_network.predict(sample)  # the probabilities of actions
             action = np.argmax(probs)
             confidence = 1 + probs[action]
 
@@ -86,7 +86,8 @@ class Agent:
     def validate_action(self, action):
         validity = True
         if action == Agent.ACTION_BUY:
-            if self.balance < self.environment.get_price() * (1 + self.TRADING_COMMISSION) * self.min_trading_unit:
+            if self.balance < self.environment.get_price() * \
+                    (1 + self.TRADING_COMMISSION) * self.min_trading_unit:  # check if such position is affordable
                 validity = False
         elif action == Agent.ACTION_SELL:
             if self.num_stocks <= 0:
