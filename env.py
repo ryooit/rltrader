@@ -5,7 +5,7 @@ Environment Class
 
 
 class Environment:
-    PRICE_IDX = 4  # index of end price
+    PRICE_IDX = 4  # index of the end price
 
     def __init__(self, chart_data=None):
         self.chart_data = chart_data
@@ -23,7 +23,7 @@ class Environment:
             return self.observation
         return None
 
-    def get_price(self):
+    def get_price(self):  # return the end price
         if self.observation is not None:
             return self.observation[self.PRICE_IDX]
         return None
