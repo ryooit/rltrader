@@ -67,3 +67,28 @@ class Agent:
             self.ratio_hold,
             self.ratio_portfolio_value
         )
+
+    def decide_action(self, policy_network, sample, epsilon):
+        confidence = 0
+
+        # Exploration Decision
+        if np.random.rand() < epsilon:
+            exploration = True
+            action = np.random.randint(self.NUM_ACTIONS)
+        else:
+            exploration = False
+            probs = policy_network.predict(sample)
+            action = np.argmax(probs)
+            confidence = 1 + probs[action]
+
+        return action, confidence, exploration
+
+    def validate_action(self, action):
+        validity = True
+        if action == Agent.ACTION_BUY:
+            if self.balance < self.environment.get_price() * (1 + self.TRADING_COMMISSION) * self.min_trading_unit:
+                validity = False
+        elif action == Agent.ACTION_SELL:
+            if self.num_stocks <= 0:
+                validity = False
+        return validity
