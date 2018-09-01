@@ -11,7 +11,7 @@ class Agent:
     STATE_DIM = 2
 
     # Ignore trading expenses
-    TRADING_COMMISSION = 0
+    TRADING_CHARGE = 0
     TRADING_TAX = 0
 
     # ACTIONS
@@ -85,11 +85,75 @@ class Agent:
 
     def validate_action(self, action):
         validity = True
-        if action == Agent.ACTION_BUY:
+        if action == Agent.ACTION_BUY:  # check if such position is affordable
             if self.balance < self.environment.get_price() * \
-                    (1 + self.TRADING_COMMISSION) * self.min_trading_unit:  # check if such position is affordable
+                    (1 + self.TRADING_CHARGE) * self.min_trading_unit:
                 validity = False
-        elif action == Agent.ACTION_SELL:
+        elif action == Agent.ACTION_SELL:  # check if there is any stock to sell
             if self.num_stocks <= 0:
                 validity = False
         return validity
+
+    def decide_trading_unit(self, confidence):  # The more confident, the more investing
+        if np.isnan(confidence):
+            return self.min_trading_unit
+        added_trading = max(min(
+            int(confidence * (self.max_trading_unit - self.min_trading_unit)),
+            self.max_trading_unit - self.min_trading_unit
+        ), 0)
+        return self.min_trading_unit + added_trading
+
+    def act(self, action, confidence):
+        if not self.validate_action(action):  # If the action is not validate
+            action = Agent.ACTION_HOLD
+
+        curr_price = self.environment.get_price()
+        self.immediate_reward = 0
+
+        if action == Agent.ACTION_BUY:  # BUY Case
+            trading_unit = self.decide_trading_unit(confidence)
+            balance = self.balance - curr_price * (1 + self.TRADING_CHARGE) * trading_unit
+            if balance < 0:  # if there is not enough cash, then buy as much as we can
+                trading_unit = max(min(
+                    int(self.balance / (curr_price * (1 + self.TRADING_CHARGE))), self.max_trading_unit),
+                    self.min_trading_unit
+                )
+            # Calculate final invest_amount with trading charge
+            invest_amount = curr_price * (1 + self.TRADING_CHARGE) * trading_unit
+            self.balance -= invest_amount
+            self.num_stocks += trading_unit
+            self.num_buy += 1
+
+        elif action == Agent.ACTION_SELL:  # SELL Case
+            trading_unit = self.decide_trading_unit(confidence)
+            # Sell as much as we can
+            trading_unit = min(trading_unit, self.num_stocks)
+
+            invest_amount = curr_price * (
+                    1 - (self.TRADING_TAX + self.TRADING_CHARGE)) * trading_unit
+            self.num_stocks -= trading_unit
+            self.balance += invest_amount
+            self.num_sell += 1
+
+        elif action == Agent.ACTION_HOLD:  # HOLD Case
+            self.num_hold += 1
+
+        # Renew Portfolio Value
+        self.portfolio_value = self.balance + curr_price * self.num_stocks
+        profitloss = (
+                (self.portfolio_value - self.base_portfolio_value) / self.base_portfolio_value
+        )
+
+        # Immediate reward: 1 if there is profit, -1 otherwise
+        self.immediate_reward = 1 if profitloss >= 0 else -1
+
+        # Delayed reward
+        if profitloss > self.delayed_reward_threshold:  # Success to achieve target value
+            delayed_reward = 1
+            self.base_portfolio_value = self.portfolio_value
+        elif profitloss < -self.delayed_reward_threshold:  # Failure to achieve target value
+            delayed_reward = -1
+            self.base_portfolio_value = self.portfolio_value
+        else:
+            delayed_reward = 0
+        return self.immediate_reward, delayed_reward
