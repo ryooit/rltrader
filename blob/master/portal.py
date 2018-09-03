@@ -15,7 +15,7 @@ chdata = data.get_data_yahoo(
 
             # end date (YYYY-MM-DD / datetime.datetime object)
             # (optional, defaults is Today)
-            end = "2017-04-30",
+            end = "2017-12-31",
 
             # return a multi-index dataframe
             # (optional, default is Panel, which is deprecated)
