@@ -45,4 +45,3 @@ class PolicyLearner:
             max_trading_unit=self.agent.max_trading_unit,
             delayed_reward_threshold=self.agent.delayed_reward_threshold
         ))
-
