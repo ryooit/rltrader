@@ -75,3 +75,21 @@ class Visualizer:
         # Manage canvas layout
         plt.tight_layout()
         plt.subplots_adjust(top=.9)
+
+    def clear(self, xlim):
+        for ax in self.axes[1:]:
+            ax.cla()  # Erase green chart
+            ax.relim()  # Initialize limit
+            ax.autoscale()  # Reset scale
+
+        self.axes[1].set_ylabel('Agent')
+        self.axes[2].set_ylabel('PG')
+        self.axes[3].set_ylabel('PV')
+        for ax in self.axes:
+            ax.set_xlim(xlim)  # Reset x-coordinate limit
+            ax.get_xaxis().get_major_formatter().set_scientific(False)
+            ax.get_yaxis().get_major_formatter().set_scientific(False)
+            ax.ticklabel_format(useOffset=False)  # Divide x-coordinate evenly
+
+    def save(self, path):
+        plt.savefig(path)
