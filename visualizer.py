@@ -11,7 +11,7 @@ class Visualizer:
         self.axes = None  # Matplotlib Axes Class Object for drawing charts
 
     def prepare(self, chart_data):
-        self.fig, self.axes = plt.subplots(nrows=4, ncols=1, facecolor='w', sharex=True)
+        self.fig, self.axes = plt.subplots(nrows=4, ncols=1, facecolor='w', share=True)
         for ax in self.axes:
             ax.get_xaxis().get_major_formatter().set_scientific(False)
             ax.get_yaxis().get_major_formatter().set_scientific(False)
