@@ -9,7 +9,6 @@ from agent import Agent
 from policy_network import PolicyNetwork
 from visualizer import Visualizer
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -34,3 +33,16 @@ class PolicyLearner:
     def reset(self):
         self.sample = None
         self.training_data_idx = -1
+
+    def fit(self, num_epoches=1000, max_memory=60, balance=10000000,
+            discount_factor=0, start_epsilon=.5, learning=True):
+        logger.info("LR: {lr}, DF: {discount_factor}, "
+                    "TU: [{min_trading_unit}, {max_trading_unit}], "
+                    "DRT: {delayed_reward_threshold}".format(
+            lr=self.policy_network.lr,
+            discount_factor=discount_factor,
+            min_trading_unit=self.agent.min_trading_unit,
+            max_trading_unit=self.agent.max_trading_unit,
+            delayed_reward_threshold=self.agent.delayed_reward_threshold
+        ))
+
