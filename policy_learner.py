@@ -1,7 +1,6 @@
 import os  # Create folder, file path
 import locale  # Currency string format
-import time  # Get time & time string format
-import datetime
+import logging
 import numpy as np
 import settings  # Investment and logging settings
 from environment import Environment
@@ -45,3 +44,164 @@ class PolicyLearner:
             max_trading_unit=self.agent.max_trading_unit,
             delayed_reward_threshold=self.agent.delayed_reward_threshold
         ))
+
+        # Prepare for visualization
+        self.visualizer.prepare(self.environment.chart_data)
+
+        # Set the folder for saving the visual results
+        epoch_summary_dir = os.path.join(
+            settings.BASE_DIR, 'epoch_summary/%s/epoch_summary_%s' % (self.stock_code, settings.timestr))
+        if not os.path.isdir(epoch_summary_dir):
+            os.makedirs(epoch_summary_dir)
+
+        # Set the initial balance
+        self.agent.set_balance(balance)
+
+        # Initialize the learning variables
+        max_portfolio_value = 0
+        epoch_win_cnt = 0
+
+        # Learning iteration
+        for epoch in range(num_epoches):
+            # Initialize epoch variables
+            loss = 0.  # Difference between policy learner and learning data
+            itr_cnt = 0  # Iteration count
+            win_cnt = 0  # The number of epochs that make profits
+            exploration_cnt = 0  # The number of investment randomly
+            batch_size = 0
+            pos_learning_cnt = 0  # The number of providing positive delayed reward
+            neg_learning_cnt = 0  # The number of providing negative delayed reward
+
+            # Initialize memory
+            memory_sample = []
+            memory_action = []
+            memory_reward = []
+            memory_prob = []
+            memory_pv = []
+            memory_num_stocks = []
+            memory_exp_idx = []
+            memory_learning_idx = []
+
+            self.environment.reset()
+            self.agent.reset()
+            self.policy_network.reset()
+            self.reset()
+            self.visualizer.clear([0, len(self.chart_data)])
+
+            if learning:  # Decreasing exploration rate
+                epsilon = start_epsilon * (1. - float(epoch) / (num_epoches - 1))
+            else:
+                epsilon = 0
+
+            while True:
+                next_sample = self._build_sample()
+                if next_sample is None:
+                    break
+                action, confidence, exploration = self.agent.decide_action(
+                    self.policy_network, self.sample, epsilon)
+                immediate_reward, delayed_reward = self.agent.act(action, confidence)
+
+                # Memorize action and results
+                memory_sample.append(next_sample)
+                memory_action.append(action)
+                memory_reward.append(immediate_reward)
+                memory_pv.append(self.agent.portfolio_value)
+                memory_num_stocks.append(self.agent.num_stocks)
+                memory = [(
+                    memory_sample[i],
+                    memory_action[i],
+                    memory_reward[i])
+                    for i in list(range(len(memory_action)))[-max_memory:]
+                ]
+                if exploration:
+                    memory_exp_idx.append(itr_cnt)
+                    memory_prob.append([np.nan] * Agent.NUM_ACTIONS)
+                else:
+                    memory_prob.append(self.policy_network.prob)
+
+                # Renew the batch info
+                batch_size += 1
+                itr_cnt += 1
+                exploration_cnt += 1 if exploration else 0
+                win_cnt += 1 if delayed_reward > 0 else 0
+
+                # Renew policy learning if learning mode and delayed mode
+                if delayed_reward == 0 and batch_size >= max_memory:
+                    delayed_reward = immediate_reward
+                if learning and delayed_reward != 0:
+                    batch_size = min(batch_size, max_memory)
+                    x, y = self._get_batch(
+                        memory, batch_size, discount_factor, delayed_reward)
+                    if len(x) > 0:
+                        if delayed_reward > 0:
+                            pos_learning_cnt += 1
+                        else:
+                            neg_learning_cnt += 1
+                        loss += self.policy_network.train_on_batch(x, y)
+                        memory_learning_idx.append([itr_cnt, delayed_reward])
+                    batch_size = 0
+
+            # Visualize epoch info
+            num_epoches_digit = len(str(num_epoches))
+            epoch_str = str(epoch + 1).rjust(num_epoches_digit, '0')
+
+            self.visualizer.plot(
+                epoch_str=epoch_str, num_epoches=num_epoches, epsilon=epsilon,
+                action_list=Agent.ACTIONS, actions=memory_action,
+                num_stocks=memory_num_stocks, outvals=memory_prob,
+                exps=memory_exp_idx, learning=memory_learning_idx,
+                initial_balance=self.agent.initial_balance, pvs=memory_pv
+            )
+            self.visualizer.save(os.path.join(
+                epoch_summary_dir, 'epoch_summary_%s_%s.png' % (
+                    settings.timestr, epoch_str)))
+
+            # Record logs of Epoch info
+            if pos_learning_cnt + neg_learning_cnt > 0:
+                loss /= pos_learning_cnt + neg_learning_cnt
+            logger.info("[Epoch %s/%s]\tEpsilon:%.4f\t#Expl.:%d/%d\t"
+                        "#Buy:%d\t#Sell:%d\t#Hold:%d\t"
+                        "#Stocks:%d\tPV:%s\t"
+                        "POS:%s\tNEG:%s\tLoss:%10.6f" % (
+                            epoch_str, num_epoches, epsilon, exploration_cnt, itr_cnt,
+                            self.agent.num_buy, self.agent.num_sell, self.agent.num_hold,
+                            self.agent.num_stocks,
+                            locale.currency(self.agent.portfolio_value, grouping=True),
+                            pos_learning_cnt, neg_learning_cnt, loss))
+
+            # Renew learning info
+            max_portfolio_value = max(
+                max_portfolio_value, self.agent.portfolio_value)
+            if self.agent.portfolio_value > self.agent.initial_balance:
+                epoch_win_cnt += 1
+
+        # Record logs of learning info
+        logger.info("Max PV: %s, \t # Win: %d" % (
+            locale.currency(max_portfolio_value, grouping=True), epoch_win_cnt))
+
+    def _get_batch(self, memory, batch_size, discount_factor, delayed_reward):
+        x = np.zeros((batch_size, 1, self.num_features))
+        y = np.full((batch_size, self.agent.NUM_ACTIONS), 0.5)
+
+        for i, (sample, action, reward) in enumerate(
+                reversed(memory[-batch_size:])):
+            x[i] = np.array(sample).reshape((-1, 1, self.num_features))
+            y[i, action] = (delayed_reward + 1) / 2
+            if discount_factor > 0:
+                y[i, action] *= discount_factor ** i
+        return x, y
+
+    def _build_sample(self):
+        self.environment.observe()
+        if len(self.training_data) > self.training_data_idx + 1:
+            self.training_data_idx += 1
+            self.sample = self.training_data.iloc[self.training_data_idx].tolist()
+            self.sample.extend(self.agent.get_states())
+            return self.sample
+        return None
+
+    def trade(self, model_path=None, balance=2000000):
+        if model_path is None:
+            return
+        self.policy_network.load_model(model_path=model_path)
+        self.fit(balance=balance, num_epoches=1, learning=False)
